@@ -220,21 +220,11 @@ async function pollWanTaskResult(taskId, apiKey, maxAttempts = 60) {
  * Build prompt from influencer profile
  * For WAN Replace mode: Follow Wavespeed docs recommendation
  * Example: "Preserve outfit, natural expression, no background change"
+ * Note: The face comes from the image URL, not the prompt
  */
 function buildPromptFromProfile(profile) {
-  const parts = [];
-
-  // Following Wavespeed docs format
-  parts.push('Preserve outfit');
-  parts.push('natural expression');
-  parts.push('no background change');
-
-  // Optional: add character name for consistency
-  if (profile.nickname) {
-    parts.push(`${profile.nickname}'s face`);
-  }
-
-  return parts.join(', ') + '.';
+  // Following Wavespeed docs format exactly
+  return 'Preserve outfit, natural expression, no background change.';
 }
 
 /**

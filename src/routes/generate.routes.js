@@ -5,6 +5,21 @@ import { handleVideoGeneration } from '../services/generation.service.js';
 const router = express.Router();
 
 /**
+ * Normalize shot type values from Chrome Extension to database format
+ * Extension sends: "close-up", "half-body", "full-body"
+ * Database expects: "close", "half", "full"
+ */
+function normalizeShotType(shotType) {
+  if (!shotType) return null;
+  const mapping = {
+    'close-up': 'close',
+    'half-body': 'half',
+    'full-body': 'full'
+  };
+  return mapping[shotType] || shotType;
+}
+
+/**
  * POST /api/generate
  * Main endpoint for Chrome Extension
  * Receives payload from content script when user clicks on image/video
@@ -45,9 +60,12 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // Normalize shot type
+    const normalizedShotType = normalizeShotType(shotType);
+
     console.log(`[${mode.toUpperCase()}] Generation request from ${platform}`);
     console.log(`Source URL: ${sourceUrl}`);
-    console.log(`Shot Type: ${shotType || 'auto-detect'}`);
+    console.log(`Shot Type: ${shotType || 'auto-detect'} -> ${normalizedShotType || 'null'}`);
     console.log(`Settings: ${JSON.stringify(settings || {})}`);
 
     // Route to appropriate handler
@@ -56,7 +74,7 @@ router.post('/', async (req, res) => {
       result = await handleImageGeneration({
         platform,
         sourceUrl,
-        shotType,
+        shotType: normalizedShotType,
         settings: settings || {},
         timestamp: timestamp || new Date().toISOString()
       });
@@ -64,7 +82,7 @@ router.post('/', async (req, res) => {
       result = await handleVideoGeneration({
         platform,
         sourceUrl,
-        shotType,
+        shotType: normalizedShotType,
         settings: settings || {},
         timestamp: timestamp || new Date().toISOString()
       });
@@ -100,10 +118,12 @@ router.post('/image', async (req, res) => {
       return res.status(400).json({ error: 'sourceUrl is required' });
     }
 
+    const normalizedShotType = normalizeShotType(shotType);
+
     const result = await handleImageGeneration({
       platform: 'generic',
       sourceUrl,
-      shotType,
+      shotType: normalizedShotType,
       settings: settings || {},
       timestamp: new Date().toISOString()
     });
@@ -135,10 +155,12 @@ router.post('/video', async (req, res) => {
       return res.status(400).json({ error: 'sourceUrl is required' });
     }
 
+    const normalizedShotType = normalizeShotType(shotType);
+
     const result = await handleVideoGeneration({
       platform: 'generic',
       sourceUrl,
-      shotType,
+      shotType: normalizedShotType,
       settings: settings || {},
       timestamp: new Date().toISOString()
     });

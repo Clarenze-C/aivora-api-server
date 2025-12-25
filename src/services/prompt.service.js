@@ -248,20 +248,20 @@ FINAL PROMPT:`;
 
 /**
  * NSFW prompt editing with MythoMax L2 13B via OpenRouter
- * Follows Seedream's Action + Object + Attribute formula with explicit reference instructions
+ * For Seedream 4.5 Edit - requires extremely detailed and explicit prompts for NSFW content
  */
 async function editPromptWithOpenRouter(reversePrompt, profile, faceCount, bodyCount, isSFW = false) {
-  const model = isSFW ? OPENROUTER_MODELS.GEMMA_3_4B : OPENROUTER_MODELS.MYTHOMAX_L2_13B;
+  const model = OPENROUTER_MODELS.MYTHOMAX_L2_13B;
   const modelName = model.name;
 
-  // Build detailed prompt following Seedream's Action + Object + Attribute formula
-  const editPrompt = `You are an expert prompt editor for ${isSFW ? 'SFW' : 'NSFW'} AI image generation using Seedream. Follow Seedream's prompting formula: Action + Object + Attribute.
+  // Build extremely detailed and explicit prompt for NSFW/Seedream
+  const editPrompt = `You are an expert prompt editor for NSFW AI image generation using Seedream 4.5 Edit. You MUST be extremely detailed, explicit, and specific about EVERY element.
 
 SOURCE IMAGE DESCRIPTION:
 ${reversePrompt}
 
 TARGET CHARACTER APPEARANCE:
-${profile.physical_traits ? `- Hair: ${profile.physical_traits.hair_color || 'not specified'}
+${profile.physical_traits ? `- Hair: ${profile.physical_traits.hair_color || 'not specified'}, ${profile.physical_traits.hair_style || 'standard style'}
 - Eyes: ${profile.physical_traits.eye_color || 'not specified'}
 - Skin: ${profile.physical_traits.skin_tone || 'not specified'}
 - Face: ${profile.physical_traits.face_shape || 'oval'}` : 'Young woman appearance'}
@@ -271,45 +271,62 @@ ${profile.style || 'Natural, photorealistic style'}
 
 REFERENCE IMAGES:
 - Images 1 and 2: Face reference (use for facial feature matching)
-- Images 3 and 4: Body reference (use for body proportions and pose reference)
+- Images 3 and 4: Body reference (use for body proportions and anatomical accuracy)
 
-FOLLOW SEEDREAM'S FORMULA: Action + Object + Attribute
+CRITICAL SEEDREAM 4.5 NSFW PROMPTING RULES:
 
-Describe in natural language: Subject + Action + Environment + Style/Color/Lighting/Composition
+Seedream 4.5 Edit requires EXPLICIT anatomical detail. Vague descriptions will result in censored/generic output.
 
-EXAMPLE SEEDREAM PROMPT:
-"A girl in elegant clothing, holding a parasol, walking down a tree-lined avenue, Monet oil painting style"
+1. **BE SPECIFIC ABOUT BODY PARTS**: Never say "breasts" - say "bare breasts with visible nipples", "large natural breasts with pink areolas", "perky breasts with erect nipples", etc.
+2. **DESCRIBE CLOTHING FIT**: "tight translucent top revealing nipples", "see-through fabric", "sheer lingerie", "form-fitting dress showing contours", "clothing clinging to body"
+3. **BE EXPLICIT ABOUT ACTIONS**: "spreading legs", "bent over pose", "arched back", "leaning forward", "lying down with legs apart", "posing seductively"
+4. **DETAIL ANATOMICAL FEATURES**: nipple color/size, areola visibility, body hair, skin texture, muscle tone, body shape, curves
+5. **DESCRIBE EXPOSURE**: "fully visible", "partially covered", "see-through", "sheer", "translucent", "strategically placed", "revealing", "exposed"
+
+PROMPT STRUCTURE:
+
+PART 1 - Subject Description (BE EXTREMELY DETAILED):
+"A [NSFW/safe-for-work] [shot type: close-up/portrait/half-body/full body/nude] of a [age] [gender] with [detailed physical description: height, body type, skin tone, hair color/style, eye color].
+
+[IF NUDE/EXPOSED]: Explicitly describe ALL visible body parts with anatomical precision. Include: breast size/shape/nipple details, genital visibility, body hair, skin texture, curves, muscle definition.
+
+[CLOTHING]: Describe every item of clothing with specific details about: color, fabric type (sheer/see-through/translucent/tight/loose), fit (form-fitting/flowing/revealing), how it contours to body, what it reveals or conceals.
+
+[POSE]: Describe exact body position: stance, arm placement, leg positioning, spinal alignment, head tilt, facial expression."
+
+PART 2 - Action and Expression:
+"[ACTION verb: standing/sitting/lying/bending/leaning] with [detailed description of movement and gesture]. [FACIAL EXPRESSION: smiling/seductive/aroused/neutral] with [eye contact/looking away/closed eyes]."
+
+PART 3 - Environment:
+"[Background/setting description] with [props/objects/furniture]. [Lighting: natural/artificial, direction, intensity]. [Atmosphere: intimate/dramatic/playful]."
+
+PART 4 - Technical Details:
+"[Camera: shot type, lens, angle]. [Composition: framing, depth of field]. [Style: photorealistic/artistic]."
+
+PART 5 - Reference Instructions (MANDATORY):
+"Use images 1 and 2 as face reference to replace the face exactly. Match facial features: eye shape, nose, lips, jawline. Use images 3 and 4 as body reference for anatomical accuracy and proportions. Preserve all other elements from the original scene: clothing, pose, background, lighting."
+
+EXAMPLE EXPLICIT NSFW PROMPTS:
+
+Example 1 (Nude):
+"A photorealistic full body nude of a 25-year-old woman with medium natural breasts with light pink areolas and visible nipples, slender waist, wide hips, and smooth shaved vulva. She is standing with one arm covering her breasts and the other at her side, looking directly at camera with a soft sensual expression. The setting is a dimly lit bedroom with satin sheets. Soft warm lighting creates an intimate mood. Captured with a 50mm lens at eye level. Use images 1 and 2 as face reference. Use images 3 and 4 as body reference."
+
+Example 2 (Lingerie):
+"A photorealistic half-body portrait of a woman wearing sheer black lingerie that barely covers her breasts, with nipples clearly visible through the translucent fabric. The lingerie is tight and form-fitting, accentuating her curves. She is leaning forward with a seductive smile, soft lighting coming from the left creating shadows that emphasize her cleavage. Captured with an 85mm portrait lens, shallow depth of field, bokeh background. Use images 1 and 2 as face reference. Use images 3 and 4 as body reference."
 
 YOUR TASK:
-Rewrite the source image description into a detailed natural language prompt following this structure.
+Rewrite the source image description into an extremely detailed, explicit prompt for NSFW Seedream 4.5 Edit generation.
 
-START WITH:
-"A [photorealistic/stylized] [shot type: close-up/portrait/full body] of [subject description], [action/expression], set in [environment]."
+MANDATORY REQUIREMENTS:
+- Be EXPLICIT about ALL body parts (use proper anatomical terms)
+- Specify exact clothing state: nude, sheer, see-through, tight, loose, etc.
+- Describe exact pose with body positioning details
+- Include facial expression and eye direction
+- Specify lighting direction and quality
+- Mention camera/lens details
+- ALWAYS include reference image instructions at the end
 
-THEN ADD:
-"The scene is illuminated by [lighting: golden hour/soft diffused/three-point/studio], creating a [mood: serene/dramatic/playful] atmosphere."
-
-THEN ADD:
-"Captured with [camera/lens: 85mm portrait lens/wide-angle/macro], emphasizing [textures: fabric details/skin texture/material surfaces]."
-
-FINALLY ADD (CRITICAL):
-"Use images 1 and 2 as face reference to replace the face. Use images 3 and 4 as body reference for proportions. Preserve all other elements from the original scene exactly."
-
-PHOTOGRAPHY TERMS TO USE:
-- Shot types: close-up, portrait, half-body, full body, wide shot
-- Camera: 85mm portrait lens, wide-angle, macro, 50mm, 35mm
-- Lighting: golden hour, soft diffused, three-point setup, natural window light, studio lighting
-- Composition: bokeh, depth of field, rule of thirds, leading lines
-- Mood: serene, dramatic, playful, intimate, mysterious
-
-CRITICAL RULES:
-- Write in natural, flowing paragraphs - NOT keyword lists
-- Include all details from source: clothing colors/fabrics, background, pose, lighting
-- Keep original outfit, pose, background - ONLY replace the face using images 1 and 2
-- Use images 3 and 4 for body proportions
-- ${!isSFW ? 'Be explicit and detailed about all elements including anatomical features, clothing fit, body contours, and any adult themes present.' : 'Be detailed but family-friendly.'}
-- DO NOT include character names or backstory
-- Output ONLY the final prompt
+Output ONLY the final prompt, nothing else.
 
 FINAL PROMPT:`;
 
@@ -327,14 +344,12 @@ FINAL PROMPT:`;
         messages: [
           {
             role: 'system',
-            content: isSFW
-              ? 'You are an expert prompt editor for AI image generation. You follow Seedream\'s Action + Object + Attribute formula and use photography terminology.'
-              : 'You are an expert prompt editor for NSFW AI image generation and adult content. You follow Seedream\'s Action + Object + Attribute formula and write detailed, explicit prompts with rich descriptions.'
+            content: 'You are an expert prompt editor for NSFW AI image generation and adult content. You write extremely detailed, explicit prompts for Seedream 4.5 Edit. You use precise anatomical terminology and never shy away from explicit descriptions of body parts, sexual content, or adult themes. You understand that vague prompts result in censored output, so you are maximally specific about every detail.'
           },
           { role: 'user', content: editPrompt }
         ],
         temperature: 0.8,
-        max_tokens: 1500
+        max_tokens: 2000
       })
     });
 
@@ -347,7 +362,7 @@ FINAL PROMPT:`;
     const finalPrompt = result.choices?.[0]?.message?.content;
 
     if (finalPrompt) {
-      console.log(`[Prompt] ${isSFW ? 'SFW' : 'NSFW'} prompt edited with ${modelName}`);
+      console.log(`[Prompt] NSFW prompt edited with ${modelName}`);
       return finalPrompt.trim();
     }
 

@@ -157,10 +157,11 @@ export async function buildGenerationPrompt(reversePrompt, profile, references, 
 
 /**
  * SFW prompt editing with Gemma 3 4B via OpenRouter
+ * Follows Gemini's recommended template structure
  */
 async function editPromptWithGemma(reversePrompt, profile, faceCount, bodyCount) {
-  // Build detailed prompt following Seedream's Action + Object + Attribute formula
-  const editPrompt = `You are an expert prompt editor for AI image generation. Your task is to rewrite descriptions into detailed, natural language prompts that follow photography best practices.
+  // Build detailed prompt following Gemini's template from official docs
+  const editPrompt = `You are an expert prompt editor for Gemini image generation. Follow Gemini's recommended template structure exactly.
 
 SOURCE IMAGE DESCRIPTION:
 ${reversePrompt}
@@ -169,31 +170,38 @@ TARGET CHARACTER APPEARANCE:
 ${profile.physical_traits ? `- Hair: ${profile.physical_traits.hair_color || 'not specified'}, ${profile.physical_traits.hair_style || 'standard style'}
 - Eyes: ${profile.physical_traits.eye_color || 'not specified'}
 - Skin: ${profile.physical_traits.skin_tone || 'not specified'}
-- Face shape: ${profile.physical_traits.face_shape || 'oval'}` : 'Standard female appearance'}
+- Face: ${profile.physical_traits.face_shape || 'oval'}` : 'Standard female appearance'}
 
 STYLE & AESTHETIC:
 ${profile.style || 'Natural, photorealistic style'}
 
-REFERENCE IMAGES AVAILABLE:
-- ${faceCount} face reference images for facial feature matching
-- ${bodyCount} body reference images for body proportions
+REFERENCE IMAGES:
+- Images 1 and 2: Face reference (use for facial feature matching)
+- Images 3 and 4: Body reference (use for body proportions and pose reference)
 
-TASK:
-Create a detailed, natural language prompt for AI image generation using this formula:
-1. **Subject**: Describe the main subject clearly (person, clothing, pose)
-2. **Action**: What they are doing (standing, sitting, expression, gesture)
-3. **Environment**: Setting, background, location details
-4. **Style**: Photography style, lighting, mood, color palette
+FOLLOW GEMINI'S TEMPLATE STRUCTURE:
+
+Start with: "A photorealistic [shot type] of [subject], [action or expression], set in [environment]."
+
+Then add: "The scene is illuminated by [lighting description], creating a [mood] atmosphere."
+
+Then add: "Captured with a [camera/lens details], emphasizing [key textures and details]."
+
+Finally add: "Use images 1 and 2 as face reference to replace the face. Use images 3 and 4 as body reference for proportions. Preserve all other elements from the original scene exactly."
+
+EXAMPLE GEMINI PROMPT:
+"A photorealistic close-up portrait of an elderly Japanese ceramicist with deep, sun-etched wrinkles and a warm, knowing smile. He is carefully inspecting a freshly glazed tea bowl. The setting is his rustic, sun-drenched workshop. The scene is illuminated by soft, golden hour light streaming through a window, highlighting the fine texture of the clay. Captured with an 85mm portrait lens, resulting in a soft, blurred background (bokeh). The overall mood is serene and masterful."
+
+YOUR TASK:
+Rewrite the source image description into a prompt following this exact structure. Use photography terms like "85mm portrait lens", "golden hour", "bokeh", "soft diffused lighting", "three-point setup", "wide-angle", "macro", "depth of field".
 
 IMPORTANT RULES:
-- Describe the scene in natural, flowing paragraphs - NOT a list of keywords
-- Use photography terms: camera angle (eye-level, low-angle, high-angle), lens type (85mm portrait, wide-angle), lighting (golden hour, soft diffused, three-point setup), composition (bokeh, depth of field, rule of thirds)
-- Include specific details: fabric textures, material types, lighting direction, color temperatures
-- Keep the original outfit, pose, and background from the source - only change the face to match the reference images
+- Follow the 4-part template structure exactly
+- Write in natural, flowing paragraphs - NOT keyword lists
+- Keep the original outfit, pose, and background - only replace the face using images 1 and 2
+- Use images 3 and 4 for body proportions
 - DO NOT mention character names or backstory
-- Add instruction: "Use the face reference images to replace the face while preserving everything else"
-
-Output ONLY the final prompt, nothing else.
+- Output ONLY the final prompt
 
 FINAL PROMPT:`;
 
@@ -209,7 +217,7 @@ FINAL PROMPT:`;
       body: JSON.stringify({
         model: OPENROUTER_MODELS.GEMMA_3_4B.id,
         messages: [
-          { role: 'system', content: 'You are an expert prompt editor for AI image generation. You write detailed, natural language prompts following photography best practices and Seedream prompting guidelines.' },
+          { role: 'system', content: 'You are an expert prompt editor for Gemini image generation. You follow Gemini\'s official template structure: shot type + subject + action + environment + lighting + mood + camera/lens + textures.' },
           { role: 'user', content: editPrompt }
         ],
         temperature: 0.7,
@@ -240,14 +248,14 @@ FINAL PROMPT:`;
 
 /**
  * NSFW prompt editing with MythoMax L2 13B via OpenRouter
- * MythoMax excels at creative writing and roleplay - good for descriptive prompts
+ * Follows Seedream's Action + Object + Attribute formula with explicit reference instructions
  */
 async function editPromptWithOpenRouter(reversePrompt, profile, faceCount, bodyCount, isSFW = false) {
   const model = isSFW ? OPENROUTER_MODELS.GEMMA_3_4B : OPENROUTER_MODELS.MYTHOMAX_L2_13B;
   const modelName = model.name;
 
-  // Build detailed prompt for NSFW/SFW generation
-  const editPrompt = `You are an expert prompt editor for ${isSFW ? 'SFW' : 'NSFW'} AI image generation. Your task is to create detailed, explicit prompts for image generation.
+  // Build detailed prompt following Seedream's Action + Object + Attribute formula
+  const editPrompt = `You are an expert prompt editor for ${isSFW ? 'SFW' : 'NSFW'} AI image generation using Seedream. Follow Seedream's prompting formula: Action + Object + Attribute.
 
 SOURCE IMAGE DESCRIPTION:
 ${reversePrompt}
@@ -261,31 +269,47 @@ ${profile.physical_traits ? `- Hair: ${profile.physical_traits.hair_color || 'no
 STYLE & AESTHETIC:
 ${profile.style || 'Natural, photorealistic style'}
 
-REFERENCE IMAGES AVAILABLE:
-- ${faceCount} face reference images for facial feature matching
-- ${bodyCount} body reference images for body proportions
+REFERENCE IMAGES:
+- Images 1 and 2: Face reference (use for facial feature matching)
+- Images 3 and 4: Body reference (use for body proportions and pose reference)
 
-TASK:
-Create a detailed, natural language prompt for AI image generation.
+FOLLOW SEEDREAM'S FORMULA: Action + Object + Attribute
 
-STRUCTURE YOUR PROMPT WITH:
-1. **Subject**: Clear description of the person and what they're wearing (colors, fabrics, fit, style)
-2. **Action**: Pose, expression, gesture, body language
-3. **Environment**: Complete setting description - background, location, props, objects
-4. **Lighting**: Light source, direction, quality (soft, harsh, diffused), color temperature
-5. **Technical Details**: Camera angle, lens type, depth of field, composition
-6. **Mood**: Overall atmosphere and emotional tone
+Describe in natural language: Subject + Action + Environment + Style/Color/Lighting/Composition
+
+EXAMPLE SEEDREAM PROMPT:
+"A girl in elegant clothing, holding a parasol, walking down a tree-lined avenue, Monet oil painting style"
+
+YOUR TASK:
+Rewrite the source image description into a detailed natural language prompt following this structure.
+
+START WITH:
+"A [photorealistic/stylized] [shot type: close-up/portrait/full body] of [subject description], [action/expression], set in [environment]."
+
+THEN ADD:
+"The scene is illuminated by [lighting: golden hour/soft diffused/three-point/studio], creating a [mood: serene/dramatic/playful] atmosphere."
+
+THEN ADD:
+"Captured with [camera/lens: 85mm portrait lens/wide-angle/macro], emphasizing [textures: fabric details/skin texture/material surfaces]."
+
+FINALLY ADD (CRITICAL):
+"Use images 1 and 2 as face reference to replace the face. Use images 3 and 4 as body reference for proportions. Preserve all other elements from the original scene exactly."
+
+PHOTOGRAPHY TERMS TO USE:
+- Shot types: close-up, portrait, half-body, full body, wide shot
+- Camera: 85mm portrait lens, wide-angle, macro, 50mm, 35mm
+- Lighting: golden hour, soft diffused, three-point setup, natural window light, studio lighting
+- Composition: bokeh, depth of field, rule of thirds, leading lines
+- Mood: serene, dramatic, playful, intimate, mysterious
 
 CRITICAL RULES:
 - Write in natural, flowing paragraphs - NOT keyword lists
-- Use specific photography terminology (85mm lens, golden hour, bokeh, etc.)
-- Include all details from the source description exactly
-- Keep original clothing, pose, background - ONLY replace the face
+- Include all details from source: clothing colors/fabrics, background, pose, lighting
+- Keep original outfit, pose, background - ONLY replace the face using images 1 and 2
+- Use images 3 and 4 for body proportions
 - ${!isSFW ? 'Be explicit and detailed about all elements including anatomical features, clothing fit, body contours, and any adult themes present.' : 'Be detailed but family-friendly.'}
-- Add: "Use the provided face reference images to replace the face while preserving all other elements exactly as described."
 - DO NOT include character names or backstory
-
-Output ONLY the final prompt, nothing else.
+- Output ONLY the final prompt
 
 FINAL PROMPT:`;
 
@@ -304,8 +328,8 @@ FINAL PROMPT:`;
           {
             role: 'system',
             content: isSFW
-              ? 'You are an expert prompt editor for SFW AI image generation. You write detailed, natural language prompts using photography terminology.'
-              : 'You are an expert prompt editor for NSFW AI image generation and adult content. You write detailed, explicit prompts with rich descriptions while maintaining quality and consistency.'
+              ? 'You are an expert prompt editor for AI image generation. You follow Seedream\'s Action + Object + Attribute formula and use photography terminology.'
+              : 'You are an expert prompt editor for NSFW AI image generation and adult content. You follow Seedream\'s Action + Object + Attribute formula and write detailed, explicit prompts with rich descriptions.'
           },
           { role: 'user', content: editPrompt }
         ],
@@ -341,7 +365,7 @@ FINAL PROMPT:`;
 function fallbackPrompt(reversePrompt, faceCount, bodyCount) {
   return `${reversePrompt}
 
-Use the ${faceCount} face reference images to replace the person's face while preserving the original clothing, pose, and background. Match facial features exactly from the reference images.${bodyCount > 0 ? ' Use body reference images for proportions.' : ''}`;
+Use images 1 and 2 as face reference to replace the person's face while preserving the original clothing, pose, and background. Match facial features exactly from the reference images. Use images 3 and 4 as body reference for proportions.`;
 }
 
 // ==========================================

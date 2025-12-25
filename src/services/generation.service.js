@@ -207,17 +207,21 @@ async function generateImageAsync(jobId, persona, platform, sourceUrl, shotType,
     const capitalizedPersona = persona.charAt(0).toUpperCase() + persona.slice(1);
 
     if (model.name === 'Gemini 3 Pro Image' || model.name.includes('Gemini')) {
-      // SFW - Use Gemini
-      console.log(`[${jobId}] Using Gemini (SFW)`);
+      // SFW - Use Gemini (direct Google API)
+      console.log(`[${jobId}] Using Gemini (SFW) - Google AI Studio API`);
       result = await generateImageWithGemini({
         sourceUrl,
         persona: capitalizedPersona,
         shotType: shotType || 'close',
-        apiKey: process.env.WAVESPEED_API_KEY
+        apiKey: process.env.GOOGLE_API_KEY,
+        settings: {
+          aspectRatio: settings.aspectRatio || '3:4',
+          resolution: settings.resolution || '2K'
+        }
       });
     } else {
-      // NSFW - Use Seedream 4.5 Edit
-      console.log(`[${jobId}] Using Seedream (NSFW)`);
+      // NSFW - Use Seedream 4.5 Edit (Wavespeed API)
+      console.log(`[${jobId}] Using Seedream (NSFW) - Wavespeed API`);
       result = await generateImageWithSeedream({
         sourceUrl,
         persona: capitalizedPersona,

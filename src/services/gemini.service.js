@@ -1,19 +1,26 @@
 import { downloadFile, uploadToSupabase, getReferenceImages, getInfluencerProfile } from './reference.service.js';
 
 /**
- * Generate image using Gemini 2.5 Flash Image Preview Edit
- * This is the SFW model - uses Google's Gemini through Wavespeed
+ * Generate image using Google AI Studio API (Nano Banana Pro / gemini-3-pro-image-preview)
+ * Direct API call - NOT through Wavespeed
+ * Uses your Google AI Studio credits
  */
 export async function generateImageWithGemini(options) {
   const {
     sourceUrl,
     persona,
     shotType,
-    apiKey
+    apiKey,
+    settings = {}
   } = options;
+
+  const GOOGLE_API_KEY = apiKey || process.env.GOOGLE_API_KEY;
+  const ASPECT_RATIO = settings.aspectRatio || '3:4';
+  const IMAGE_SIZE = settings.resolution || '2K'; // 1K, 2K, or 4K
 
   console.log(`[Gemini] Starting image generation for ${persona}`);
   console.log(`[Gemini] Source: ${sourceUrl}`);
+  console.log(`[Gemini] Aspect Ratio: ${ASPECT_RATIO}, Size: ${IMAGE_SIZE}`);
 
   try {
     // Get reference images
@@ -26,74 +33,43 @@ export async function generateImageWithGemini(options) {
 
     console.log(`[Gemini] Using ${references.face.length} face refs`);
 
-    // Download source image
-    const imageBlob = await downloadFile(sourceUrl);
+    // Step 1: Upload reference image to Google
+    console.log(`[Gemini] Uploading reference image to Google...`);
+    const referenceImageUrl = await uploadFileToGoogle(references.face[0], GOOGLE_API_KEY);
 
-    // Upload to Supabase temporarily
-    const tempFilename = `temp_${Date.now()}_source.png`;
-    await uploadToSupabase(imageBlob, tempFilename, 'temp');
+    // Step 2: Download source image
+    const sourceBlob = await downloadFile(sourceUrl);
 
-    const uploadedSourceUrl = `https://hisjjecrmlszuidhiref.supabase.co/storage/v1/object/public/aivora-gallery/temp/${tempFilename}`;
+    // Step 3: Upload source image to Google
+    console.log(`[Gemini] Uploading source image to Google...`);
+    const sourceImageUrl = await uploadBlobToGoogle(sourceBlob, GOOGLE_API_KEY);
 
-    // Build prompt - simpler for Gemini
+    // Step 4: Generate image
     const prompt = buildPromptFromProfile(profile);
+    console.log(`[Gemini] Prompt: ${prompt}`);
 
-    // Gemini 2.5 Flash Image Preview Edit API
-    const requestBody = {
-      image: uploadedSourceUrl,
-      reference_image: references.face[0],  // Gemini uses single reference image
-      prompt: prompt
+    const imageBase64 = await generateWithGoogleAPI(
+      prompt,
+      referenceImageUrl,
+      sourceImageUrl,
+      ASPECT_RATIO,
+      IMAGE_SIZE,
+      GOOGLE_API_KEY
+    );
+
+    // Step 5: Convert base64 to blob
+    const imageBuffer = Buffer.from(imageBase64, 'base64');
+    const blob = new Blob([imageBuffer], { type: 'image/png' });
+
+    // Step 6: Upload to Supabase
+    const finalFilename = `${persona}_image_${Date.now()}.png`;
+    const { url: finalUrl } = await uploadToSupabase(blob, finalFilename, `${persona}/images`);
+
+    return {
+      success: true,
+      imageUrl: finalUrl,
+      model: 'gemini-3-pro-image-preview'
     };
-
-    console.log(`[Gemini] Calling API...`);
-
-    const response = await fetch('https://api.wavespeed.ai/api/v3/google/gemini-2.5-flash-image-preview-edit', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(requestBody)
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini API error ${response.status}: ${errorText}`);
-    }
-
-    const result = await response.json();
-    console.log(`[Gemini] Response:`, result);
-
-    // Handle async task
-    if (result.data && result.data.id) {
-      const finalResult = await pollGeminiTask(result.data.id, apiKey);
-
-      // Download and upload final image
-      const imageBlob = await downloadFile(finalResult.imageUrl);
-      const finalFilename = `${persona}_image_${Date.now()}.png`;
-      const { url: finalUrl } = await uploadToSupabase(imageBlob, finalFilename, `${persona}/images`);
-
-      return {
-        success: true,
-        imageUrl: finalUrl,
-        model: 'gemini-2.5-flash-image-preview-edit'
-      };
-    }
-
-    // Direct result
-    if (result.data && result.data.outputs && result.data.outputs.length > 0) {
-      const imageBlob = await downloadFile(result.data.outputs[0]);
-      const finalFilename = `${persona}_image_${Date.now()}.png`;
-      const { url: finalUrl } = await uploadToSupabase(imageBlob, finalFilename, `${persona}/images`);
-
-      return {
-        success: true,
-        imageUrl: finalUrl,
-        model: 'gemini-2.5-flash-image-preview-edit'
-      };
-    }
-
-    throw new Error('Unexpected API response format');
 
   } catch (error) {
     console.error(`[Gemini] Error:`, error);
@@ -102,53 +78,132 @@ export async function generateImageWithGemini(options) {
 }
 
 /**
- * Poll Gemini task for completion
+ * Upload file URL to Google AI Studio
  */
-async function pollGeminiTask(taskId, apiKey, maxAttempts = 30) {
-  console.log(`[Gemini] Polling task: ${taskId}`);
-
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(resolve => setTimeout(resolve, 3000));
-
-    const response = await fetch(`https://api.wavespeed.ai/api/v3/predictions/${taskId}/result`, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to check task status: ${response.statusText}`);
-    }
-
-    const result = await response.json();
-
-    console.log(`[Gemini] Poll ${i + 1}/${maxAttempts}: ${result.data?.status || result.status}`);
-
-    if (result.data && result.data.status === 'completed' && result.data.outputs && result.data.outputs.length > 0) {
-      return {
-        imageUrl: result.data.outputs[0]
-      };
-    }
-
-    if (result.data && result.data.status === 'failed') {
-      throw new Error(result.data.error || 'Gemini generation failed');
-    }
+async function uploadFileToGoogle(fileUrl, apiKey) {
+  // First download the file
+  const response = await fetch(fileUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download reference image: ${response.statusText}`);
   }
-
-  throw new Error('Task timed out');
+  const blob = await response.blob();
+  return await uploadBlobToGoogle(blob, apiKey);
 }
 
 /**
- * Build prompt for Gemini - keep it simple
+ * Upload blob to Google AI Studio Files API
+ */
+async function uploadBlobToGoogle(blob, apiKey) {
+  const formData = new FormData();
+  formData.append('file', blob);
+
+  const uploadResponse = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
+    {
+      method: 'POST',
+      body: formData
+    }
+  );
+
+  if (!uploadResponse.ok) {
+    const errorText = await uploadResponse.text();
+    throw new Error(`Google upload failed: ${uploadResponse.status} - ${errorText}`);
+  }
+
+  const uploadResult = await uploadResponse.json();
+  console.log(`[Gemini] Upload result:`, uploadResult);
+
+  // Wait for processing to complete
+  const fileId = uploadResult.file?.name || uploadResult.name;
+  if (!fileId) {
+    throw new Error('No file ID returned from Google upload');
+  }
+
+  // Poll for file to be ACTIVE
+  for (let i = 0; i < 30; i++) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    const checkResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/files/${fileId}?key=${apiKey}`
+    );
+
+    if (checkResponse.ok) {
+      const fileResult = await checkResponse.json();
+      if (fileResult.state === 'ACTIVE') {
+        console.log(`[Gemini] File ${fileId} is active`);
+        return `gs://${fileId}`;
+      }
+    }
+  }
+
+  throw new Error('File processing timed out');
+}
+
+/**
+ * Generate image using Google Gemini API
+ */
+async function generateWithGoogleAPI(prompt, referenceUri, sourceUri, aspectRatio, imageSize, apiKey) {
+  const requestBody = {
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          { file_data: { file_uri: referenceUri } },
+          { file_data: { file_uri: sourceUri } }
+        ]
+      }
+    ],
+    generationConfig: {
+      responseModalities: ['TEXT', 'IMAGE'],
+      imageConfig: {
+        aspectRatio: aspectRatio,
+        imageSize: imageSize
+      }
+    }
+  };
+
+  console.log(`[Gemini] Calling Google API...`);
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Google API error ${response.status}: ${errorText}`);
+  }
+
+  const result = await response.json();
+  console.log(`[Gemini] API response received`);
+
+  // Extract image from response
+  if (result.candidates && result.candidates[0] && result.candidates[0].content) {
+    for (const part of result.candidates[0].content.parts) {
+      if (part.inlineData && part.inlineData.data) {
+        console.log(`[Gemini] Image generated successfully`);
+        return part.inlineData.data;
+      }
+    }
+  }
+
+  throw new Error('No image in response');
+}
+
+/**
+ * Build prompt for Gemini - simple and focused
  */
 function buildPromptFromProfile(profile) {
   const parts = [];
 
-  if (profile.nickname) {
-    parts.push(`Replace face with ${profile.nickname}'s face`);
-  } else {
-    parts.push('Replace face');
-  }
+  // Face replacement instruction
+  parts.push('Replace the face in the second image with the face from the first image');
 
   // Physical traits
   if (profile.physical_traits) {
@@ -157,12 +212,12 @@ function buildPromptFromProfile(profile) {
     if (profile.physical_traits.eye_color) traits.push(`${profile.physical_traits.eye_color} eyes`);
     if (profile.physical_traits.skin_tone) traits.push(profile.physical_traits.skin_tone);
     if (traits.length > 0) {
-      parts.push(traits.join(', '));
+      parts.push('Target appearance: ' + traits.join(', '));
     }
   }
 
-  // Keep original outfit and background
-  parts.push('preserve original outfit and background');
+  // Keep original everything
+  parts.push('Preserve the original outfit, background, and pose from the second image');
 
   return parts.join('. ') + '.';
 }

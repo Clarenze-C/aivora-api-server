@@ -1,6 +1,7 @@
 /**
  * Prompt Building Service with Reverse Prompting
- * Handles SFW (Gemini) and NSFW (OpenRouter) prompt generation
+ * Handles SFW (Gemma 3 4B) and NSFW (MythoMax L2 13B) prompt generation via OpenRouter
+ * Uses Llama 3.2 11B Vision for reverse prompting
  */
 
 import { downloadFile } from './reference.service.js';
@@ -10,26 +11,30 @@ import { downloadFile } from './reference.service.js';
 // ==========================================
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
-// OpenRouter Models (for NSFW prompt editing)
+// OpenRouter Models
 const OPENROUTER_MODELS = {
+  // Vision model for reverse prompting
+  LLAMA_VISION: {
+    id: 'meta-llama/llama-3.2-11b-vision-instruct',
+    name: 'Llama 3.2 11B Vision',
+    pricing: '$0.049/1M input, $0.049/1M output, $0.079/1K images'
+  },
+  // SFW prompt editing
+  GEMMA_3_4B: {
+    id: 'google/gemma-3-4b-it:free',
+    name: 'Gemma 3 4B',
+    pricing: '$0.01/1M input, $0.01/1M output',
+    sfw: true
+  },
+  // NSFW prompt editing (uncensored, good for creative writing/roleplay)
   MYTHOMAX_L2_13B: {
     id: 'gryphe/mythomax-l2-13b',
     name: 'MythoMax L2 13B',
     pricing: '$0.10/1M input, $0.10/1M output',
     uncensored: true
-  },
-  HERMES_MIXTRAL: {
-    id: 'nousresearch/nous-hermes-2-mixtral-8x7b-dpo',
-    name: 'Nous Hermes 2 Mixtral 8x7B',
-    pricing: '$0.30/1M input, $0.30/1M output',
-    uncensored: true
   }
 };
-
-// Default model for NSFW prompt editing
-const DEFAULT_NSFW_MODEL = OPENROUTER_MODELS.MYTHOMAX_L2_13B;
 
 // ==========================================
 // REVERSE PROMPTING
@@ -37,7 +42,7 @@ const DEFAULT_NSFW_MODEL = OPENROUTER_MODELS.MYTHOMAX_L2_13B;
 
 /**
  * Reverse prompt: Describe what's in the source image
- * Uses Gemini Vision Flash (fast, free with Google API)
+ * Uses Llama 3.2 11B Vision via OpenRouter (cheapest vision model)
  */
 export async function reversePromptImage(imageUrl, enableNSFW = false) {
   console.log(`[Prompt] Reverse prompting image: ${imageUrl}`);
@@ -50,59 +55,74 @@ export async function reversePromptImage(imageUrl, enableNSFW = false) {
     const base64Image = Buffer.from(imageBuffer).toString('base64');
     const mimeType = imageBlob.type || 'image/png';
 
-    // Build reverse prompt based on NSFW mode
+    // Detailed reverse prompt following Gemini prompting guide
+    // Include photography terms: camera angles, lens types, lighting, fine details
     const analysisPrompt = enableNSFW
-      ? `Describe this image in detail for AI image generation. Include:
-1. Subject(s): person/people, their appearance, clothing, pose
-2. Setting/location and background elements
-3. Lighting and atmosphere
-4. Camera angle and framing
-5. Mood and expression
-6. Any props or objects
-Be explicit and detailed. Include any NSFW elements if present.`
-      : `Describe this image in detail for AI image generation. Include:
-1. Subject(s): person/people, their appearance, clothing, pose
-2. Setting/location and background elements
-3. Lighting and atmosphere
-4. Camera angle and framing
-5. Mood and expression
-6. Any props or objects
-Be detailed but family-friendly.`;
+      ? `You are analyzing an image for AI image generation. Describe this image in extreme detail using the following structure:
 
-    // Call Gemini Flash (fast and free)
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GOOGLE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [
-              { text: analysisPrompt },
-              { inline_data: { mime_type: mimeType, data: base64Image } }
+1. **Subject(s)**: Person/people - age, gender, appearance, facial features, hair, skin tone, body type
+2. **Clothing & Accessories**: Exact colors, fabrics, styles, patterns, how clothing fits, any accessories
+3. **Pose & Body Language**: Body position, gestures, expression, posture, stance
+4. **Setting/Location**: Environment, background elements, props, objects, architectural details
+5. **Lighting & Atmosphere**: Light source type (natural/artificial), direction, intensity, color temperature, mood
+6. **Camera & Composition**: Shot type (close-up, portrait, full body), camera angle (eye-level, high angle, low angle), framing, depth of field
+7. **Technical Details**: Any visible textures, materials, reflections, shadows
+8. **Style & Aesthetic**: Overall visual style, color palette, era, artistic influences
+
+Be explicit and detailed. Include any NSFW elements if present with precise anatomical and descriptive language.`
+      : `You are analyzing an image for AI image generation. Describe this image in extreme detail using the following structure:
+
+1. **Subject(s)**: Person/people - age, gender, appearance, facial features, hair, skin tone, body type
+2. **Clothing & Accessories**: Exact colors, fabrics, styles, patterns, how clothing fits, any accessories
+3. **Pose & Body Language**: Body position, gestures, expression, posture, stance
+4. **Setting/Location**: Environment, background elements, props, objects, architectural details
+5. **Lighting & Atmosphere**: Light source type (natural/artificial), direction, intensity, color temperature, mood
+6. **Camera & Composition**: Shot type (close-up, portrait, full body), camera angle (eye-level, high angle, low angle), framing, depth of field
+7. **Technical Details**: Any visible textures, materials, reflections, shadows
+8. **Style & Aesthetic**: Overall visual style, color palette, era, artistic influences
+
+Use photography terminology: mention specific lens types (e.g., "85mm portrait lens", "wide-angle"), lighting setups (e.g., "golden hour", "softbox", "three-point lighting"), and composition techniques (e.g., "bokeh", "depth of field", "rule of thirds"). Be detailed but family-friendly.`;
+
+    // Call Llama 3.2 11B Vision via OpenRouter
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'HTTP-Referer': 'https://aivora.ai',
+        'X-Title': 'AIVORA'
+      },
+      body: JSON.stringify({
+        model: OPENROUTER_MODELS.LLAMA_VISION.id,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: analysisPrompt },
+              { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } }
             ]
-          }]
-        })
-      }
-    );
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 2000
+      })
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Gemini Vision error: ${response.status} - ${errorText}`);
+      throw new Error(`Llama Vision error: ${response.status} - ${errorText}`);
     }
 
     const result = await response.json();
 
     // Extract description
-    if (result.candidates?.[0]?.content?.parts?.[0]?.text) {
-      const description = result.candidates[0].content.parts[0].text;
+    if (result.choices?.[0]?.message?.content) {
+      const description = result.choices[0].message.content;
       console.log(`[Prompt] Reverse prompt generated: ${description.substring(0, 200)}...`);
       return description;
     }
 
-    throw new Error('No description in Gemini response');
+    throw new Error('No description in Llama Vision response');
 
   } catch (error) {
     console.error(`[Prompt] Reverse prompting failed:`, error);
@@ -118,7 +138,7 @@ Be detailed but family-friendly.`;
 
 /**
  * Edit prompt by combining reverse prompt + reference image instructions
- * Routes to Gemini (SFW) or OpenRouter/MythoMax (NSFW)
+ * Routes to Gemma 3 4B (SFW) or MythoMax L2 13B (NSFW) via OpenRouter
  */
 export async function buildGenerationPrompt(reversePrompt, profile, references, enableNSFW = false) {
   console.log(`[Prompt] Building generation prompt (NSFW: ${enableNSFW})`);
@@ -130,114 +150,52 @@ export async function buildGenerationPrompt(reversePrompt, profile, references, 
     // NSFW: Use OpenRouter with MythoMax
     return await editPromptWithOpenRouter(reversePrompt, profile, faceCount, bodyCount);
   } else {
-    // SFW: Use Gemini
-    return await editPromptWithGemini(reversePrompt, profile, faceCount, bodyCount);
+    // SFW: Use OpenRouter with Gemma 3 4B
+    return await editPromptWithOpenRouter(reversePrompt, profile, faceCount, bodyCount, true);
   }
 }
 
 /**
- * SFW prompt editing with Gemini
+ * SFW prompt editing with Gemma 3 4B via OpenRouter
  */
-async function editPromptWithGemini(reversePrompt, profile, faceCount, bodyCount) {
-  const editPrompt = `You are a prompt editor for AI image generation. I will provide:
-1. A reverse prompt describing the source image
-2. Information about the target character
-
-Your task: Rewrite the prompt to instruct the AI to recreate the scene from the reverse prompt, but replace the person with the target character.
-
-Reverse Prompt:
-${reversePrompt}
-
-Target Character: ${profile.name || 'Arisa'}
-${profile.physical_traits ? `- Appearance: ${JSON.stringify(profile.physical_traits)}` : ''}
-${profile.style ? `- Style: ${profile.style}` : ''}
-
-Reference Images Available:
-- ${faceCount} face reference images (use for facial features)
-- ${bodyCount} body reference images (use for body proportions and pose reference)
-
-Instructions:
-1. Start with "Recreate the following scene:"
-2. Include all details from the reverse prompt (clothing, background, lighting, pose, etc.)
-3. Add explicit instructions to use the reference images for face replacement
-4. Keep the original outfit, background, and pose intact - only replace the face
-5. Do NOT mention the character name or personality traits
-6. Output ONLY the final prompt, no explanations
-
-Final Prompt:`;
-
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${GOOGLE_API_KEY}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: editPrompt }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1000
-          }
-        })
-      }
-    );
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Gemini edit error: ${response.status} - ${errorText}`);
-    }
-
-    const result = await response.json();
-    const finalPrompt = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (finalPrompt) {
-      console.log(`[Prompt] SFW prompt edited with Gemini`);
-      return finalPrompt.trim();
-    }
-
-    throw new Error('No prompt in Gemini response');
-
-  } catch (error) {
-    console.error(`[Prompt] Gemini editing failed:`, error);
-    return fallbackPrompt(reversePrompt, faceCount, bodyCount);
-  }
-}
-
-/**
- * NSFW prompt editing with OpenRouter (MythoMax L2 13B)
- */
-async function editPromptWithOpenRouter(reversePrompt, profile, faceCount, bodyCount) {
-  const editPrompt = `<|im_start|>system
-You are an expert prompt editor for NSFW AI image generation. You write detailed, explicit prompts for adult content generation while maintaining quality and consistency.<|im_end|>
-<|im_start|>user
-I need you to rewrite a prompt for AI image generation. Here's what you have:
+async function editPromptWithGemma(reversePrompt, profile, faceCount, bodyCount) {
+  // Build detailed prompt following Seedream's Action + Object + Attribute formula
+  const editPrompt = `You are an expert prompt editor for AI image generation. Your task is to rewrite descriptions into detailed, natural language prompts that follow photography best practices.
 
 SOURCE IMAGE DESCRIPTION:
 ${reversePrompt}
 
-TARGET CHARACTER: ${profile.name || 'Arisa'}
-${profile.physical_traits ? `PHYSICAL TRAITS: ${JSON.stringify(profile.physical_traits)}` : ''}
-${profile.style ? `STYLE: ${profile.style}` : ''}
+TARGET CHARACTER APPEARANCE:
+${profile.physical_traits ? `- Hair: ${profile.physical_traits.hair_color || 'not specified'}, ${profile.physical_traits.hair_style || 'standard style'}
+- Eyes: ${profile.physical_traits.eye_color || 'not specified'}
+- Skin: ${profile.physical_traits.skin_tone || 'not specified'}
+- Face shape: ${profile.physical_traits.face_shape || 'oval'}` : 'Standard female appearance'}
 
-REFERENCE IMAGES:
+STYLE & AESTHETIC:
+${profile.style || 'Natural, photorealistic style'}
+
+REFERENCE IMAGES AVAILABLE:
 - ${faceCount} face reference images for facial feature matching
 - ${bodyCount} body reference images for body proportions
 
 TASK:
-Create a detailed prompt that instructs the AI to:
-1. Recreate the exact scene from the source description (clothing, background, pose, lighting)
-2. Replace the person's face with the character's face using the reference images
-3. Keep all original clothing, pose, and background - only change the face
-4. Be explicit about any NSFW elements present in the source
-5. Do NOT include character names, backstory, or personality
+Create a detailed, natural language prompt for AI image generation using this formula:
+1. **Subject**: Describe the main subject clearly (person, clothing, pose)
+2. **Action**: What they are doing (standing, sitting, expression, gesture)
+3. **Environment**: Setting, background, location details
+4. **Style**: Photography style, lighting, mood, color palette
 
-Output ONLY the final prompt, nothing else.<|im_end|>
-<|im_start|>assistant
-`;
+IMPORTANT RULES:
+- Describe the scene in natural, flowing paragraphs - NOT a list of keywords
+- Use photography terms: camera angle (eye-level, low-angle, high-angle), lens type (85mm portrait, wide-angle), lighting (golden hour, soft diffused, three-point setup), composition (bokeh, depth of field, rule of thirds)
+- Include specific details: fabric textures, material types, lighting direction, color temperatures
+- Keep the original outfit, pose, and background from the source - only change the face to match the reference images
+- DO NOT mention character names or backstory
+- Add instruction: "Use the face reference images to replace the face while preserving everything else"
+
+Output ONLY the final prompt, nothing else.
+
+FINAL PROMPT:`;
 
   try {
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -249,33 +207,130 @@ Output ONLY the final prompt, nothing else.<|im_end|>
         'X-Title': 'AIVORA'
       },
       body: JSON.stringify({
-        model: DEFAULT_NSFW_MODEL.id,
+        model: OPENROUTER_MODELS.GEMMA_3_4B.id,
         messages: [
-          { role: 'system', content: 'You are an expert prompt editor for NSFW AI image generation.' },
+          { role: 'system', content: 'You are an expert prompt editor for AI image generation. You write detailed, natural language prompts following photography best practices and Seedream prompting guidelines.' },
           { role: 'user', content: editPrompt }
         ],
-        temperature: 0.8,
-        max_tokens: 1000
+        temperature: 0.7,
+        max_tokens: 1500
       })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`OpenRouter error: ${response.status} - ${errorText}`);
+      throw new Error(`Gemma error: ${response.status} - ${errorText}`);
     }
 
     const result = await response.json();
     const finalPrompt = result.choices?.[0]?.message?.content;
 
     if (finalPrompt) {
-      console.log(`[Prompt] NSFW prompt edited with ${DEFAULT_NSFW_MODEL.name}`);
+      console.log(`[Prompt] SFW prompt edited with ${OPENROUTER_MODELS.GEMMA_3_4B.name}`);
       return finalPrompt.trim();
     }
 
-    throw new Error('No prompt in OpenRouter response');
+    throw new Error('No prompt in Gemma response');
 
   } catch (error) {
-    console.error(`[Prompt] OpenRouter editing failed:`, error);
+    console.error(`[Prompt] Gemma editing failed:`, error);
+    return fallbackPrompt(reversePrompt, faceCount, bodyCount);
+  }
+}
+
+/**
+ * NSFW prompt editing with MythoMax L2 13B via OpenRouter
+ * MythoMax excels at creative writing and roleplay - good for descriptive prompts
+ */
+async function editPromptWithOpenRouter(reversePrompt, profile, faceCount, bodyCount, isSFW = false) {
+  const model = isSFW ? OPENROUTER_MODELS.GEMMA_3_4B : OPENROUTER_MODELS.MYTHOMAX_L2_13B;
+  const modelName = model.name;
+
+  // Build detailed prompt for NSFW/SFW generation
+  const editPrompt = `You are an expert prompt editor for ${isSFW ? 'SFW' : 'NSFW'} AI image generation. Your task is to create detailed, explicit prompts for image generation.
+
+SOURCE IMAGE DESCRIPTION:
+${reversePrompt}
+
+TARGET CHARACTER APPEARANCE:
+${profile.physical_traits ? `- Hair: ${profile.physical_traits.hair_color || 'not specified'}
+- Eyes: ${profile.physical_traits.eye_color || 'not specified'}
+- Skin: ${profile.physical_traits.skin_tone || 'not specified'}
+- Face: ${profile.physical_traits.face_shape || 'oval'}` : 'Young woman appearance'}
+
+STYLE & AESTHETIC:
+${profile.style || 'Natural, photorealistic style'}
+
+REFERENCE IMAGES AVAILABLE:
+- ${faceCount} face reference images for facial feature matching
+- ${bodyCount} body reference images for body proportions
+
+TASK:
+Create a detailed, natural language prompt for AI image generation.
+
+STRUCTURE YOUR PROMPT WITH:
+1. **Subject**: Clear description of the person and what they're wearing (colors, fabrics, fit, style)
+2. **Action**: Pose, expression, gesture, body language
+3. **Environment**: Complete setting description - background, location, props, objects
+4. **Lighting**: Light source, direction, quality (soft, harsh, diffused), color temperature
+5. **Technical Details**: Camera angle, lens type, depth of field, composition
+6. **Mood**: Overall atmosphere and emotional tone
+
+CRITICAL RULES:
+- Write in natural, flowing paragraphs - NOT keyword lists
+- Use specific photography terminology (85mm lens, golden hour, bokeh, etc.)
+- Include all details from the source description exactly
+- Keep original clothing, pose, background - ONLY replace the face
+- ${!isSFW ? 'Be explicit and detailed about all elements including anatomical features, clothing fit, body contours, and any adult themes present.' : 'Be detailed but family-friendly.'}
+- Add: "Use the provided face reference images to replace the face while preserving all other elements exactly as described."
+- DO NOT include character names or backstory
+
+Output ONLY the final prompt, nothing else.
+
+FINAL PROMPT:`;
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'HTTP-Referer': 'https://aivora.ai',
+        'X-Title': 'AIVORA'
+      },
+      body: JSON.stringify({
+        model: model.id,
+        messages: [
+          {
+            role: 'system',
+            content: isSFW
+              ? 'You are an expert prompt editor for SFW AI image generation. You write detailed, natural language prompts using photography terminology.'
+              : 'You are an expert prompt editor for NSFW AI image generation and adult content. You write detailed, explicit prompts with rich descriptions while maintaining quality and consistency.'
+          },
+          { role: 'user', content: editPrompt }
+        ],
+        temperature: 0.8,
+        max_tokens: 1500
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`${modelName} error: ${response.status} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    const finalPrompt = result.choices?.[0]?.message?.content;
+
+    if (finalPrompt) {
+      console.log(`[Prompt] ${isSFW ? 'SFW' : 'NSFW'} prompt edited with ${modelName}`);
+      return finalPrompt.trim();
+    }
+
+    throw new Error(`No prompt in ${modelName} response`);
+
+  } catch (error) {
+    console.error(`[Prompt] ${modelName} editing failed:`, error);
     return fallbackPrompt(reversePrompt, faceCount, bodyCount);
   }
 }
@@ -286,15 +341,11 @@ Output ONLY the final prompt, nothing else.<|im_end|>
 function fallbackPrompt(reversePrompt, faceCount, bodyCount) {
   return `${reversePrompt}
 
-Instructions:
-- Use the ${faceCount} face reference images to replace the person's face
-- Keep the original clothing, pose, and background
-- Match facial features from reference images
-- ${bodyCount > 0 ? `Use body reference images for proportions` : ''}`;
+Use the ${faceCount} face reference images to replace the person's face while preserving the original clothing, pose, and background. Match facial features exactly from the reference images.${bodyCount > 0 ? ' Use body reference images for proportions.' : ''}`;
 }
 
 // ==========================================
 // EXPORTS
 // ==========================================
 
-export { OPENROUTER_MODELS, DEFAULT_NSFW_MODEL };
+export { OPENROUTER_MODELS };

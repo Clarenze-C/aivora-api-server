@@ -1,5 +1,6 @@
 import { mediaVaultClient, influencerMgmtClient, MEDIA_VAULT_TABLES, INFLUENCER_MGMT_TABLES, BUCKETS } from '../config/supabase.js';
 import { nanoid } from 'nanoid';
+import { generateImageWithSeedream, generateVideoWithWanAnimate } from './wavespeed.service.js';
 
 // Default persona (can be overridden by request)
 const DEFAULT_PERSONA = 'arisa';
@@ -200,17 +201,16 @@ async function generateImageAsync(jobId, persona, platform, sourceUrl, shotType,
       .update({ status: 'processing', updated_at: new Date().toISOString() })
       .eq('id', jobId);
 
-    // TODO: Implement actual AI API call here
-    // For now, this is a placeholder that simulates generation
+    // Call actual Seedream API via wavespeed service
+    const result = await generateImageWithSeedream({
+      sourceUrl,
+      persona: persona.charAt(0).toUpperCase() + persona.slice(1), // Capitalize: arisa -> Arisa
+      shotType: shotType || 'close',
+      apiKey: process.env.WAVESPEED_API_KEY,
+      enableNSFW: settings.enableNSFW || false
+    });
 
-    await new Promise(resolve => setTimeout(resolve, 3000)); // Simulate API call
-
-    // Placeholder result
-    const result = {
-      success: true,
-      imageUrl: 'https://placeholder.com/image.png',
-      model: model.name
-    };
+    console.log(`[${jobId}] Seedream generation complete:`, result.imageUrl);
 
     // Create media_generations record (following your existing schema)
     const batchId = generateBatchId(persona);
@@ -300,14 +300,16 @@ async function generateVideoAsync(jobId, persona, platform, sourceUrl, shotType,
       .update({ status: 'processing', updated_at: new Date().toISOString() })
       .eq('id', jobId);
 
-    // TODO: Implement actual video generation
-    await new Promise(resolve => setTimeout(resolve, 5000)); // Simulate longer process
+    // Call actual WAN Animate API via wavespeed service
+    const result = await generateVideoWithWanAnimate({
+      sourceUrl,
+      persona: persona.charAt(0).toUpperCase() + persona.slice(1), // Capitalize: arisa -> Arisa
+      shotType: shotType || 'full',
+      apiKey: process.env.WAVESPEED_API_KEY,
+      settings: settings || {}
+    });
 
-    const result = {
-      success: true,
-      videoUrl: 'https://placeholder.com/video.mp4',
-      model: model.name
-    };
+    console.log(`[${jobId}] WAN Animate generation complete:`, result.videoUrl);
 
     // Create media_generations record
     const batchId = generateBatchId(persona);

@@ -1,4 +1,5 @@
 import { downloadFile, uploadToSupabase, getReferenceImages, getInfluencerProfile } from './reference.service.js';
+import { reversePromptImage, buildGenerationPrompt } from './prompt.service.js';
 
 /**
  * Generate image using Google AI Studio API (Nano Banana Pro / gemini-3-pro-image-preview)
@@ -44,10 +45,16 @@ export async function generateImageWithGemini(options) {
     console.log(`[Gemini] Uploading source image to Google...`);
     const sourceFile = await uploadBlobToGoogle(sourceBlob, GOOGLE_API_KEY);
 
-    // Step 3: Generate image
-    const prompt = buildPromptFromProfile(profile);
-    console.log(`[Gemini] Prompt: ${prompt}`);
+    // Step 3: Reverse prompt - analyze source image
+    console.log(`[Gemini] Step 3: Reverse prompting source image...`);
+    const reversePrompt = await reversePromptImage(sourceUrl, false); // SFW only
 
+    // Step 4: Build generation prompt with reference instructions
+    console.log(`[Gemini] Step 4: Building generation prompt...`);
+    const prompt = await buildGenerationPrompt(reversePrompt, profile, references, false);
+    console.log(`[Gemini] Final prompt: ${prompt.substring(0, 200)}...`);
+
+    // Step 5: Generate image
     const imageBase64 = await generateWithGoogleAPI(
       prompt,
       referenceFile,
@@ -57,11 +64,11 @@ export async function generateImageWithGemini(options) {
       GOOGLE_API_KEY
     );
 
-    // Step 4: Convert base64 to blob
+    // Step 6: Convert base64 to blob
     const imageBuffer = Buffer.from(imageBase64, 'base64');
     const blob = new Blob([imageBuffer], { type: 'image/png' });
 
-    // Step 5: Upload to Supabase
+    // Step 7: Upload to Supabase
     const finalFilename = `${persona}_image_${Date.now()}.png`;
     const { url: finalUrl } = await uploadToSupabase(blob, finalFilename, `${persona}/images`);
 

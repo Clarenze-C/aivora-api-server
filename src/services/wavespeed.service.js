@@ -1,5 +1,6 @@
 import { downloadFile, uploadToSupabase, getReferenceImages, getInfluencerProfile } from './reference.service.js';
 import { processTikTokUrl, isTikTokPostUrl, isBlobUrl } from './tiktok.service.js';
+import { reversePromptImage, buildGenerationPrompt } from './prompt.service.js';
 
 // ==========================================
 // WAVESPEED.AI API CONFIGURATION
@@ -287,8 +288,15 @@ export async function generateImageWithSeedream(options) {
 
     const uploadedSourceUrl = `https://hisjjecrmlszuidhiref.supabase.co/storage/v1/object/public/aivora-gallery/temp/${tempFilename}`;
 
-    // Build prompt
-    const prompt = buildPromptFromProfile(profile);
+    // Step 1: Reverse prompt - analyze source image
+    console.log(`[Seedream] Step 1: Reverse prompting source image...`);
+    const reversePrompt = await reversePromptImage(sourceUrl, enableNSFW);
+
+    // Step 2: Build generation prompt with reference instructions
+    console.log(`[Seedream] Step 2: Building generation prompt...`);
+    const prompt = await buildGenerationPrompt(reversePrompt, profile, references, enableNSFW);
+
+    console.log(`[Seedream] Final prompt: ${prompt.substring(0, 200)}...`);
 
     // Calculate size for Wavespeed API (e.g., "2048x2048")
     const resolution = settings.resolution || '2K';

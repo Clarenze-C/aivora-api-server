@@ -218,34 +218,23 @@ async function pollWanTaskResult(taskId, apiKey, maxAttempts = 60) {
 
 /**
  * Build prompt from influencer profile
- * For WAN Replace mode: Focus on face ONLY, not clothing
- * Clothing comes from the original video
+ * For WAN Replace mode: Follow Wavespeed docs recommendation
+ * Example: "Preserve outfit, natural expression, no background change"
  */
 function buildPromptFromProfile(profile) {
   const parts = [];
 
-  // Face-focused description
+  // Following Wavespeed docs format
+  parts.push('Preserve outfit');
+  parts.push('natural expression');
+  parts.push('no background change');
+
+  // Optional: add character name for consistency
   if (profile.nickname) {
-    parts.push(`Replace face with ${profile.nickname}`);
-  } else {
-    parts.push('Replace face');
+    parts.push(`${profile.nickname}'s face`);
   }
 
-  // Physical traits - face only
-  if (profile.physical_traits) {
-    const traits = [];
-    if (profile.physical_traits.hair_color) traits.push(`${profile.physical_traits.hair_color} hair`);
-    if (profile.physical_traits.eye_color) traits.push(`${profile.physical_traits.eye_color} eyes`);
-    if (profile.physical_traits.skin_tone) traits.push(profile.physical_traits.skin_tone);
-    if (traits.length > 0) {
-      parts.push(traits.join(', '));
-    }
-  }
-
-  // Important: preserve original video's outfit/pose
-  parts.push('keep original clothing and pose');
-
-  return parts.join('. ') + '.';
+  return parts.join(', ') + '.';
 }
 
 /**

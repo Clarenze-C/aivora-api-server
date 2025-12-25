@@ -1,4 +1,5 @@
 import { downloadFile, uploadToSupabase, getReferenceImages, getInfluencerProfile } from './reference.service.js';
+import { processTikTokUrl, isTikTokPostUrl, isBlobUrl } from './tiktok.service.js';
 
 // ==========================================
 // WAVESPEED.AI API CONFIGURATION
@@ -36,7 +37,8 @@ const WAVESPEED_CONFIG = {
  */
 export async function generateVideoWithWanAnimate(options) {
   const {
-    sourceUrl,          // TikTok video URL
+    sourceUrl,          // TikTok video URL (can be blob URL, post URL, or direct video URL)
+    pageUrl,            // TikTok post URL (required if sourceUrl is a blob URL)
     persona,            // 'Arisa'
     shotType,           // 'close', 'half', 'full'
     apiKey,
@@ -45,6 +47,7 @@ export async function generateVideoWithWanAnimate(options) {
 
   console.log(`[WAN Animate] Starting generation for ${persona}`);
   console.log(`[WAN Animate] Source: ${sourceUrl}`);
+  console.log(`[WAN Animate] Page URL: ${pageUrl || 'N/A'}`);
   console.log(`[WAN Animate] Shot type: ${shotType}`);
 
   try {
@@ -58,9 +61,17 @@ export async function generateVideoWithWanAnimate(options) {
 
     console.log(`[WAN Animate] Using ${references.face.length} face refs, ${references.body.length} body refs`);
 
-    // Step 2: Download source video
+    // Step 2: Process TikTok URL to get downloadable video URL
+    let downloadableUrl = sourceUrl;
+    if (isTikTokPostUrl(sourceUrl) || isBlobUrl(sourceUrl)) {
+      console.log(`[WAN Animate] Processing TikTok URL...`);
+      downloadableUrl = await processTikTokUrl(sourceUrl, pageUrl);
+      console.log(`[WAN Animate] Downloadable URL: ${downloadableUrl}`);
+    }
+
+    // Step 3: Download source video
     console.log(`[WAN Animate] Downloading source video...`);
-    const videoBlob = await downloadFile(sourceUrl);
+    const videoBlob = await downloadFile(downloadableUrl);
 
     // Step 3: Upload source video to Supabase for processing
     const sourceFilename = `temp_${Date.now()}_source.mp4`;

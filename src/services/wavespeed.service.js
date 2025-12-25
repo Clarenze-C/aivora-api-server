@@ -12,10 +12,10 @@ const WAVESPEED_CONFIG = {
     model: 'seedream-v4.5-edit'
   },
 
-  // WAN 2.2 Animate Replace - Image to Video
+  // WAN 2.2 Animate - Character animation/replacement
   wanAnimate: {
-    endpoint: 'https://api.wavespeed.ai/v1/wan/video/animate/replace',
-    model: 'wan-2.2-animate-replace'
+    endpoint: 'https://api.wavespeed.ai/api/v3/wavespeed-ai/wan-2.2/animate',
+    model: 'wan-2.2-animate'
   },
 
   // Kling Video Generation
@@ -127,19 +127,20 @@ async function callWanAnimateReplace(options) {
   // Build prompt based on Arisa's profile
   const prompt = buildPromptFromProfile(profile);
 
+  // Use the first reference image as the character image
+  const characterImage = referenceImages[0];
+
+  // WAN 2.2 Animate API format
   const requestBody = {
-    model: 'wan-2.2-animate-replace',
-    source_video: sourceVideoUrl,
-    reference_images: referenceImages.slice(0, 2), // WAN supports up to 2 reference images
-    prompt: prompt,
-    num_frames: 64,
-    fps: 24,
-    resolution: '720p',
-    cfg_scale: 7.5,
-    seed: Math.floor(Math.random() * 1000000)
+    image: characterImage,      // Character face image
+    video: sourceVideoUrl,      // Source video with pose/motion
+    mode: 'replace',            // Replace mode: replace person in video
+    prompt: prompt,             // Optional prompt
+    resolution: '720p',         // 480p or 720p
+    seed: -1                    // -1 for random seed
   };
 
-  const response = await fetch('https://api.wavespeed.ai/v1/wan/video/animate/replace', {
+  const response = await fetch('https://api.wavespeed.ai/api/v3/wavespeed-ai/wan-2.2/animate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -157,17 +158,17 @@ async function callWanAnimateReplace(options) {
 
   console.log(`[WAN API] Response:`, result);
 
-  // Wavespeed returns a task_id for async processing
-  if (result.task_id) {
-    // Poll for completion
-    return await pollWanTaskResult(result.task_id, apiKey);
+  // Wavespeed returns a task ID for async processing
+  if (result.data && result.data.id) {
+    // Poll for completion using the result endpoint
+    return await pollWanTaskResult(result.data.id, apiKey);
   }
 
-  // Or direct video URL
-  if (result.video_url || result.output) {
+  // Or direct video URL in outputs
+  if (result.data && result.data.outputs && result.data.outputs.length > 0) {
     return {
-      videoUrl: result.video_url || result.output,
-      duration: result.duration
+      videoUrl: result.data.outputs[0],
+      duration: null
     };
   }
 
@@ -183,7 +184,7 @@ async function pollWanTaskResult(taskId, apiKey, maxAttempts = 60) {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
 
-    const response = await fetch(`https://api.wavespeed.ai/v1/task/${taskId}`, {
+    const response = await fetch(`https://api.wavespeed.ai/api/v3/predictions/${taskId}/result`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`
       }
@@ -195,17 +196,19 @@ async function pollWanTaskResult(taskId, apiKey, maxAttempts = 60) {
 
     const result = await response.json();
 
-    console.log(`[WAN API] Poll ${i + 1}/${maxAttempts}: ${result.status}`);
+    console.log(`[WAN API] Poll ${i + 1}/${maxAttempts}: ${result.data?.status || result.status}`);
 
-    if (result.status === 'completed') {
+    // Check if task is completed
+    if (result.data && result.data.status === 'completed' && result.data.outputs && result.data.outputs.length > 0) {
       return {
-        videoUrl: result.output?.video_url || result.video_url,
-        duration: result.output?.duration
+        videoUrl: result.data.outputs[0],
+        duration: null
       };
     }
 
-    if (result.status === 'failed') {
-      throw new Error(result.error || 'WAN animation failed');
+    // Check if task failed
+    if (result.data && result.data.status === 'failed') {
+      throw new Error(result.data.error || 'WAN animation failed');
     }
   }
 
@@ -353,7 +356,7 @@ async function pollSeedreamTask(taskId, apiKey, maxAttempts = 30) {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(resolve => setTimeout(resolve, 3000));
 
-    const response = await fetch(`https://api.wavespeed.ai/v1/task/${taskId}`, {
+    const response = await fetch(`https://api.wavespeed.ai/api/v3/predictions/${taskId}/result`, {
       headers: {
         'Authorization': `Bearer ${apiKey}`
       }
@@ -365,16 +368,16 @@ async function pollSeedreamTask(taskId, apiKey, maxAttempts = 30) {
 
     const result = await response.json();
 
-    console.log(`[Seedream] Poll ${i + 1}/${maxAttempts}: ${result.status}`);
+    console.log(`[Seedream] Poll ${i + 1}/${maxAttempts}: ${result.data?.status || result.status}`);
 
-    if (result.status === 'completed') {
+    if (result.data && result.data.status === 'completed' && result.data.outputs && result.data.outputs.length > 0) {
       return {
-        imageUrl: result.output?.images?.[0]?.url || result.images?.[0]?.url
+        imageUrl: result.data.outputs[0]
       };
     }
 
-    if (result.status === 'failed') {
-      throw new Error(result.error || 'Seedream generation failed');
+    if (result.data && result.data.status === 'failed') {
+      throw new Error(result.data.error || 'Seedream generation failed');
     }
   }
 

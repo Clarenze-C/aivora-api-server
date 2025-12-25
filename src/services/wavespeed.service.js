@@ -136,7 +136,7 @@ async function callWanAnimateReplace(options) {
     video: sourceVideoUrl,      // Source video with pose/motion
     mode: 'replace',            // Replace mode: replace person in video
     prompt: prompt,             // Optional prompt
-    resolution: '720p',         // 480p or 720p
+    resolution: '480p',         // 480p ($0.2/5s) or 720p ($0.4/5s) - using 480p for cost savings
     seed: -1                    // -1 for random seed
   };
 
@@ -217,30 +217,46 @@ async function pollWanTaskResult(taskId, apiKey, maxAttempts = 60) {
 
 /**
  * Build prompt from influencer profile
+ * For WAN/Seedream: Keep it simple - just visual attributes
  */
 function buildPromptFromProfile(profile) {
-  const prompts = [];
+  const parts = [];
 
-  // Basic identity
-  prompts.push(`A beautiful ${profile.age || 20}-year-old ${profile.nationality || 'Thai'} woman named ${profile.nickname || profile.full_name}.`);
-
-  // Physical traits
-  if (profile.backstory) {
-    prompts.push(profile.backstory);
+  // Physical appearance (from physical_traits if available, or nickname)
+  if (profile.nickname) {
+    parts.push(`${profile.nickname}, a beautiful ${profile.nationality || 'Thai'} woman`);
+  } else {
+    parts.push(`Beautiful ${profile.nationality || 'Thai'} woman`);
   }
 
-  // Aesthetic
+  // Age if specified
+  if (profile.age) {
+    parts.push(`${profile.age} years old`);
+  }
+
+  // Aesthetic/style only - keep it brief
   if (profile.aesthetic) {
-    const aesthetics = Object.values(profile.aesthetic).flat();
-    prompts.push(`Style: ${aesthetics.join(', ')}`);
+    const aesthetics = Object.values(profile.aesthetic).flat().slice(0, 4); // Max 4 keywords
+    if (aesthetics.length > 0) {
+      parts.push(aesthetics.join(', '));
+    }
   }
 
-  // Personality/archetype
-  if (profile.archetype) {
-    prompts.push(`Personality: ${profile.archetype}`);
+  // Hair/eye color if available in physical_traits
+  if (profile.physical_traits) {
+    const traits = [];
+    if (profile.physical_traits.hair_color) traits.push(`${profile.physical_traits.hair_color} hair`);
+    if (profile.physical_traits.eye_color) traits.push(`${profile.physical_traits.eye_color} eyes`);
+    if (profile.physical_traits.skin_tone) traits.push(profile.physical_traits.skin_tone);
+    if (traits.length > 0) {
+      parts.push(traits.join(', '));
+    }
   }
 
-  return prompts.join(' ');
+  // Simple instruction for AI
+  parts.push('preserve natural expression, high quality');
+
+  return parts.join('. ') + '.';
 }
 
 /**

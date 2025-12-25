@@ -228,6 +228,32 @@ function buildPromptFromProfile(profile) {
 }
 
 /**
+ * Calculate image size from resolution and aspect ratio for Wavespeed API
+ * Wavespeed uses size as a range like "2048x2048"
+ */
+function calculateImageSize(resolution, aspectRatio) {
+  // Base resolutions
+  const baseSizes = {
+    '1K': 1024,
+    '2K': 2048,
+    '4K': 4096
+  };
+
+  const base = baseSizes[resolution] || 2048;
+
+  // Calculate dimensions based on aspect ratio
+  const sizeMap = {
+    '1:1': { width: base, height: base },
+    '3:4': { width: Math.floor(base * 0.75), height: base },
+    '9:16': { width: Math.floor(base * 0.5625), height: base },
+    '16:9': { width: base, height: Math.floor(base * 0.5625) }
+  };
+
+  const dimensions = sizeMap[aspectRatio] || sizeMap['3:4'];
+  return `${dimensions.width}x${dimensions.height}`;
+}
+
+/**
  * Generate image using Seedream 4.5 Edit
  */
 export async function generateImageWithSeedream(options) {
@@ -236,7 +262,8 @@ export async function generateImageWithSeedream(options) {
     persona,
     shotType,
     apiKey,
-    enableNSFW = false
+    enableNSFW = false,
+    settings = {}
   } = options;
 
   console.log(`[Seedream] Starting image generation for ${persona}`);
@@ -263,6 +290,13 @@ export async function generateImageWithSeedream(options) {
     // Build prompt
     const prompt = buildPromptFromProfile(profile);
 
+    // Calculate size for Wavespeed API (e.g., "2048x2048")
+    const resolution = settings.resolution || '2K';
+    const aspectRatio = settings.aspectRatio || '3:4';
+    const size = calculateImageSize(resolution, aspectRatio);
+
+    console.log(`[Seedream] Size: ${size} (resolution: ${resolution}, aspect: ${aspectRatio})`);
+
     // Call Seedream API
     const requestBody = {
       model: 'seedream-v4.5-edit',
@@ -271,6 +305,7 @@ export async function generateImageWithSeedream(options) {
       prompt: prompt,
       negative_prompt: 'blurry, low quality, distorted, deformed, ugly, bad anatomy, watermark, text, error',
       num_images: 1,
+      size: size,  // Wavespeed uses "widthxheight" format like "2048x2048"
       guidance_scale: 7.5,
       seed: Math.floor(Math.random() * 1000000)
     };

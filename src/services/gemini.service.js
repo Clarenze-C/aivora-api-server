@@ -15,12 +15,14 @@ export async function generateImageWithGemini(options) {
   } = options;
 
   const GOOGLE_API_KEY = apiKey || process.env.GOOGLE_API_KEY;
-  const ASPECT_RATIO = settings.aspectRatio || '3:4';
-  const IMAGE_SIZE = settings.resolution || '2K'; // 1K, 2K, or 4K
+
+  // Map resolution and aspect ratio to Google API format
+  const aspectRatio = settings.aspectRatio || '3:4';
+  const imageSize = settings.resolution || '2K'; // 1K, 2K, or 4K
 
   console.log(`[Gemini] Starting image generation for ${persona}`);
   console.log(`[Gemini] Source: ${sourceUrl}`);
-  console.log(`[Gemini] Aspect Ratio: ${ASPECT_RATIO}, Size: ${IMAGE_SIZE}`);
+  console.log(`[Gemini] Aspect Ratio: ${aspectRatio}, Size: ${imageSize}`);
 
   try {
     // Get reference images
@@ -35,33 +37,31 @@ export async function generateImageWithGemini(options) {
 
     // Step 1: Upload reference image to Google
     console.log(`[Gemini] Uploading reference image to Google...`);
-    const referenceImageUrl = await uploadFileToGoogle(references.face[0], GOOGLE_API_KEY);
+    const referenceFile = await uploadFileToGoogle(references.face[0], GOOGLE_API_KEY);
 
-    // Step 2: Download source image
+    // Step 2: Upload source image to Google
     const sourceBlob = await downloadFile(sourceUrl);
-
-    // Step 3: Upload source image to Google
     console.log(`[Gemini] Uploading source image to Google...`);
-    const sourceImageUrl = await uploadBlobToGoogle(sourceBlob, GOOGLE_API_KEY);
+    const sourceFile = await uploadBlobToGoogle(sourceBlob, GOOGLE_API_KEY);
 
-    // Step 4: Generate image
+    // Step 3: Generate image
     const prompt = buildPromptFromProfile(profile);
     console.log(`[Gemini] Prompt: ${prompt}`);
 
     const imageBase64 = await generateWithGoogleAPI(
       prompt,
-      referenceImageUrl,
-      sourceImageUrl,
-      ASPECT_RATIO,
-      IMAGE_SIZE,
+      referenceFile,
+      sourceFile,
+      aspectRatio,
+      imageSize,
       GOOGLE_API_KEY
     );
 
-    // Step 5: Convert base64 to blob
+    // Step 4: Convert base64 to blob
     const imageBuffer = Buffer.from(imageBase64, 'base64');
     const blob = new Blob([imageBuffer], { type: 'image/png' });
 
-    // Step 6: Upload to Supabase
+    // Step 5: Upload to Supabase
     const finalFilename = `${persona}_image_${Date.now()}.png`;
     const { url: finalUrl } = await uploadToSupabase(blob, finalFilename, `${persona}/images`);
 

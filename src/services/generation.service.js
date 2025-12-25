@@ -227,7 +227,11 @@ async function generateImageAsync(jobId, persona, platform, sourceUrl, shotType,
         persona: capitalizedPersona,
         shotType: shotType || 'close',
         apiKey: process.env.WAVESPEED_API_KEY,
-        enableNSFW: true
+        enableNSFW: true,
+        settings: {
+          aspectRatio: settings.aspectRatio || '3:4',
+          resolution: settings.resolution || '2K'
+        }
       });
     }
 

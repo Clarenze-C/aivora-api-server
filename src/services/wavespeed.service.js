@@ -131,12 +131,13 @@ async function callWanAnimateReplace(options) {
   const characterImage = referenceImages[0];
 
   // WAN 2.2 Animate API format
+  // Replace mode: Keeps original video's clothing/pose, only replaces the face
   const requestBody = {
     image: characterImage,      // Character face image
-    video: sourceVideoUrl,      // Source video with pose/motion
-    mode: 'replace',            // Replace mode: replace person in video
-    prompt: prompt,             // Optional prompt
-    resolution: '480p',         // 480p ($0.2/5s) or 720p ($0.4/5s) - using 480p for cost savings
+    video: sourceVideoUrl,      // Source video with pose/motion/clothing
+    mode: 'replace',            // Replace mode: keeps video's clothing, replaces face
+    prompt: prompt,             // Focuses on face appearance only
+    resolution: '720p',         // 720p for TikTok quality
     seed: -1                    // -1 for random seed
   };
 
@@ -217,32 +218,20 @@ async function pollWanTaskResult(taskId, apiKey, maxAttempts = 60) {
 
 /**
  * Build prompt from influencer profile
- * For WAN/Seedream: Keep it simple - just visual attributes
+ * For WAN Replace mode: Focus on face ONLY, not clothing
+ * Clothing comes from the original video
  */
 function buildPromptFromProfile(profile) {
   const parts = [];
 
-  // Physical appearance (from physical_traits if available, or nickname)
+  // Face-focused description
   if (profile.nickname) {
-    parts.push(`${profile.nickname}, a beautiful ${profile.nationality || 'Thai'} woman`);
+    parts.push(`Replace face with ${profile.nickname}`);
   } else {
-    parts.push(`Beautiful ${profile.nationality || 'Thai'} woman`);
+    parts.push('Replace face');
   }
 
-  // Age if specified
-  if (profile.age) {
-    parts.push(`${profile.age} years old`);
-  }
-
-  // Aesthetic/style only - keep it brief
-  if (profile.aesthetic) {
-    const aesthetics = Object.values(profile.aesthetic).flat().slice(0, 4); // Max 4 keywords
-    if (aesthetics.length > 0) {
-      parts.push(aesthetics.join(', '));
-    }
-  }
-
-  // Hair/eye color if available in physical_traits
+  // Physical traits - face only
   if (profile.physical_traits) {
     const traits = [];
     if (profile.physical_traits.hair_color) traits.push(`${profile.physical_traits.hair_color} hair`);
@@ -253,8 +242,8 @@ function buildPromptFromProfile(profile) {
     }
   }
 
-  // Simple instruction for AI
-  parts.push('preserve natural expression, high quality');
+  // Important: preserve original video's outfit/pose
+  parts.push('keep original clothing and pose');
 
   return parts.join('. ') + '.';
 }

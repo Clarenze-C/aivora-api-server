@@ -1,6 +1,7 @@
 import { mediaVaultClient, influencerMgmtClient, MEDIA_VAULT_TABLES, INFLUENCER_MGMT_TABLES, BUCKETS } from '../config/supabase.js';
 import { nanoid } from 'nanoid';
 import { generateImageWithSeedream, generateVideoWithWanAnimate } from './wavespeed.service.js';
+import { generateImageWithGemini } from './gemini.service.js';
 
 // Default persona (can be overridden by request)
 const DEFAULT_PERSONA = 'arisa';
@@ -193,7 +194,7 @@ function generateBatchId(persona) {
  */
 async function generateImageAsync(jobId, persona, platform, sourceUrl, shotType, settings, model) {
   try {
-    console.log(`[${jobId}] Starting async image generation...`);
+    console.log(`[${jobId}] Starting async image generation with ${model.name}...`);
 
     // Update job status to processing
     await mediaVaultClient
@@ -201,16 +202,32 @@ async function generateImageAsync(jobId, persona, platform, sourceUrl, shotType,
       .update({ status: 'processing', updated_at: new Date().toISOString() })
       .eq('id', jobId);
 
-    // Call actual Seedream API via wavespeed service
-    const result = await generateImageWithSeedream({
-      sourceUrl,
-      persona: persona.charAt(0).toUpperCase() + persona.slice(1), // Capitalize: arisa -> Arisa
-      shotType: shotType || 'close',
-      apiKey: process.env.WAVESPEED_API_KEY,
-      enableNSFW: settings.enableNSFW || false
-    });
+    // Route to appropriate service based on model
+    let result;
+    const capitalizedPersona = persona.charAt(0).toUpperCase() + persona.slice(1);
 
-    console.log(`[${jobId}] Seedream generation complete:`, result.imageUrl);
+    if (model.name === 'Gemini 3 Pro Image' || model.name.includes('Gemini')) {
+      // SFW - Use Gemini
+      console.log(`[${jobId}] Using Gemini (SFW)`);
+      result = await generateImageWithGemini({
+        sourceUrl,
+        persona: capitalizedPersona,
+        shotType: shotType || 'close',
+        apiKey: process.env.WAVESPEED_API_KEY
+      });
+    } else {
+      // NSFW - Use Seedream 4.5 Edit
+      console.log(`[${jobId}] Using Seedream (NSFW)`);
+      result = await generateImageWithSeedream({
+        sourceUrl,
+        persona: capitalizedPersona,
+        shotType: shotType || 'close',
+        apiKey: process.env.WAVESPEED_API_KEY,
+        enableNSFW: true
+      });
+    }
+
+    console.log(`[${jobId}] Image generation complete:`, result.imageUrl);
 
     // Create media_generations record (following your existing schema)
     const batchId = generateBatchId(persona);
